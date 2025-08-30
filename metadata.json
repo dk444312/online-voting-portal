@@ -1,0 +1,5 @@
+{
+  "name": "Online Voting Portal",
+  "description": "A secure and modern online voting portal built with React, TypeScript, and Tailwind CSS, allowing users to authenticate and cast their votes for various positions.",
+  "requestFramePermissions": []
+}
