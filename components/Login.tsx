@@ -91,7 +91,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
              ) : (
                 <div className="animate-fadeIn">
                     <h2 className="text-2xl md:text-3xl font-semibold text-slate-800 text-center mb-4">
-                        <i className="fas fa-user-lock text-blue-500 mr-3"></i>
+                        <i className="fas fa-user-lock text-black mr-3"></i>
                         Voter Authentication
                     </h2>
                     <p className="text-center text-slate-500 mb-8">
@@ -122,7 +122,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full flex justify-center items-center gap-3 p-4 bg-blue-800 text-white rounded-lg font-semibold uppercase tracking-wider transition-all duration-300 hover:bg-blue-900 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/50 disabled:bg-slate-400 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+                            className="w-full flex justify-center items-center gap-3 p-4 bg-black text-white rounded-lg font-semibold uppercase tracking-wider transition-all duration-300 hover:bg-blue-900 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/50 disabled:bg-slate-400 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
                         >
                             {isLoading ? <LoadingSpinner /> : <i className="fas fa-sign-in-alt"></i>}
                             {isLoading ? 'Logging In...' : 'Login'}
