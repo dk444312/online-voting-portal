@@ -9,8 +9,8 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ showLogout, onLogout }) => {
     return (
         <header className="flex justify-between items-center mb-5 relative">
-            <h1 className="flex-grow text-center text-3xl md:text-4xl font-bold text-blue-800">
-                <i className="fas fa-vote-yea text-blue-500 mr-4"></i>
+            <h1 className="flex-grow text-center text-3xl md:text-4xl font-bold text-black">
+                <i className="fas fa-vote-yea text-black mr-4"></i>
                 Online Voting Portal
             </h1>
             {showLogout && (
@@ -27,3 +27,4 @@ const Header: React.FC<HeaderProps> = ({ showLogout, onLogout }) => {
 };
 
 export default Header;
+
