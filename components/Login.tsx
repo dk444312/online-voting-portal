@@ -76,7 +76,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     
     return (
         <section className="bg-white border border-slate-200 rounded-xl p-6 md:p-10 shadow-xl relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5 animate-fadeInUp">
-             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-800 via-blue-500 to-blue-400"></div>
+             <div className="absolute top-0 left-0 right-0 h-1 bg-black"></div>
              {showInitialLoader ? (
                 <div className="flex flex-col items-center justify-center py-16 animate-fadeInDown">
                     <h1 className="text-4xl font-bold text-slate-800 mb-4">Campus Vote</h1>
