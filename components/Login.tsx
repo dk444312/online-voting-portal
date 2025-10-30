@@ -1,8 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabaseClient } from '../services/supabase';
 import type { Voter, Settings } from '../types';
 import LoadingSpinner from './LoadingSpinner';
+
+// Assuming you have Font Awesome icons or similar included in your project
+// <i className="fas fa-eye"></i> and <i className="fas fa-eye-slash"></i> are used here.
 
 interface LoginProps {
     onLoginSuccess: (voter: Voter) => void;
@@ -14,6 +16,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showInitialLoader, setShowInitialLoader] = useState(true);
+    // 1. New state to manage password visibility
+    const [showPassword, setShowPassword] = useState(false); 
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -74,10 +78,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         }
     };
     
+    // Function to toggle password visibility
+    const togglePasswordVisibility = () => {
+        setShowPassword(!showPassword);
+    };
+
     return (
         <section className="bg-white border border-slate-200 rounded-xl p-6 md:p-10 shadow-xl relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5 animate-fadeInUp">
-             <div className="absolute top-0 left-0 right-0 h-1 bg-black"></div>
-             {showInitialLoader ? (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-black"></div>
+            {showInitialLoader ? (
                 <div className="flex flex-col items-center justify-center py-16 animate-fadeInDown">
                     <h1 className="text-4xl font-bold text-slate-800 mb-4">Campus Vote</h1>
                     <div className="flex items-center justify-center space-x-3 mt-2">
@@ -88,7 +97,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         <p className="text-slate-600 text-lg animate-pulse">authenticating your access</p>
                     </div>
                 </div>
-             ) : (
+            ) : (
                 <div className="animate-fadeIn">
                     <h2 className="text-2xl md:text-3xl font-semibold text-slate-800 text-center mb-4">
                         <i className="fas fa-user-lock text-black mr-3"></i>
@@ -106,14 +115,32 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                             autoComplete="username"
                             className="block w-full p-4 mb-5 border-2 border-slate-200 rounded-lg text-base font-medium transition-all duration-300 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:-translate-y-px"
                         />
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter your password"
-                            autoComplete="current-password"
-                            className="block w-full p-4 mb-5 border-2 border-slate-200 rounded-lg text-base font-medium transition-all duration-300 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:-translate-y-px"
-                        />
+                        {/* 3. Wrap input and icon in a relative container */}
+                        <div className="relative mb-5"> 
+                            <input
+                                // 2. Conditionally set the input type
+                                type={showPassword ? "text" : "password"} 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                                autoComplete="current-password"
+                                className="block w-full p-4 border-2 border-slate-200 rounded-lg text-base font-medium transition-all duration-300 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:-translate-y-px pr-12" // Add padding to make space for the icon
+                            />
+                            {/* 3. The eye icon button */}
+                            <button
+                                type="button"
+                                onClick={togglePasswordVisibility}
+                                className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-500 hover:text-black transition-colors duration-200"
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                                {/* Conditionally render the eye/eye-slash icon */}
+                                {showPassword ? (
+                                    <i className="fas fa-eye-slash"></i>
+                                ) : (
+                                    <i className="fas fa-eye"></i>
+                                )}
+                            </button>
+                        </div>
                         {error && (
                             <p className="text-center text-red-500 bg-red-500/5 border border-red-500/20 rounded-lg p-3 my-5 font-medium animate-slideInScale">
                                 {error}
@@ -129,7 +156,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                         </button>
                     </form>
                 </div>
-             )}
+            )}
         </section>
     );
 };
