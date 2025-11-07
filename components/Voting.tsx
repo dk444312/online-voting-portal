@@ -8,7 +8,7 @@ import ProgressBar from './ProgressBar';
 interface VotingProps {
   voter: Voter;
   onVoteSuccess: () => void;
-  onLogout: () => void; // <-- NEW: logout handler
+  onLogout: () => void;
 }
 
 const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
@@ -19,7 +19,7 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(true); // <-- NEW: modal state
+  const [showModal, setShowModal] = useState(true);
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
 
   const loadCandidates = useCallback(async () => {
@@ -56,10 +56,7 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
   }, [loadCandidates]);
 
   const handleSelectCandidate = (position: string, candidateId: number) => {
-    setSelections(prev => ({
-      ...prev,
-      [position]: candidateId,
-    }));
+    setSelections(prev => ({ ...prev, [position]: candidateId }));
     setSkipped(prev => {
       const next = new Set(prev);
       next.delete(position);
@@ -112,9 +109,10 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
         return;
       }
 
+      // Only allow submit if EVERY position has a selection (skip ≠ vote)
       const filledPositions = Object.values(selections).filter((val): val is number => val !== null);
       if (filledPositions.length !== positions.length) {
-        alert('Please complete all positions before submitting.');
+        alert('Please complete all positions before submitting. Skipping is not allowed on final submission.');
         setIsSubmitting(false);
         return;
       }
@@ -144,11 +142,16 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
 
   const currentPosition = positions[currentPage];
   const selectedCount = Object.values(selections).filter(s => s !== null).length;
+  const completedCount = selectedCount + skipped.size;
   const isLastPage = currentPage === positions.length;
   const isFirstPage = currentPage === 0;
-  const isPositionSelected = currentPosition ? selections[currentPosition] !== null : true;
 
-  // Loading / Error / Empty states
+  // FIXED: Allow Next if selected OR skipped
+  const isPositionSelected = currentPosition
+    ? selections[currentPosition] !== null || skipped.has(currentPosition)
+    : true;
+
+  // Loading State
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -182,27 +185,27 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
 
   return (
     <>
-      {/* ==================== MODAL ==================== */}
+      {/* ==================== WELCOME MODAL ==================== */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-8 animate-fadeIn">
-            <h1 className="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 transform transition-all animate-fadeIn">
+            <h1 className="text-3xl md:text-4xl font-bold text-center text-blue-900 mb-4">
               2025 Finale Dinner Awards Voting
             </h1>
-            <p className="text-gray-600 text-center mb-6">
-              Welcome, <span className="font-semibold">{voter.name}</span>!<br />
-              You are about to cast your vote for the annual awards.
+            <p className="text-gray-700 text-center mb-6 leading-relaxed">
+              Welcome, <span className="font-bold text-blue-700">{voter.name}</span>!<br />
+              You are now casting your vote for the annual awards.
             </p>
             <div className="flex justify-center gap-4">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition shadow-md"
+                className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg"
               >
                 Start Voting
               </button>
               <button
                 onClick={onLogout}
-                className="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition"
+                className="px-8 py-3 bg-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-300 transition"
               >
                 Logout
               </button>
@@ -211,11 +214,11 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
         </div>
       )}
 
-      {/* ==================== MAIN UI ==================== */}
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
+      {/* ==================== MAIN VOTING UI ==================== */}
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 py-8 px-4">
         <div className="max-w-3xl mx-auto">
           {/* Header with Logout */}
-          <div className="bg-white rounded-t-xl shadow-sm border-b border-gray-200 p-6 flex justify-between items-start">
+          <div className="bg-white rounded-t-2xl shadow-sm border-b border-gray-200 p-6 flex justify-between items-start">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Cast Your Vote</h1>
               <p className="mt-2 text-gray-600">
@@ -224,17 +227,17 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
             </div>
             <button
               onClick={onLogout}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition shadow-sm"
+              className="px-5 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition shadow-md"
             >
               Logout
             </button>
           </div>
 
-          {/* Progress */}
+          {/* Progress Bar */}
           <div className="bg-white px-6 pt-4 pb-2">
             <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
               <span>Question {currentPage + 1} of {positions.length + 1}</span>
-              <span>{selectedCount} of {positions.length} completed</span>
+              <span className="font-medium">{completedCount} of {positions.length} completed</span>
             </div>
             <ProgressBar total={positions.length + 1} current={currentPage + 1} />
           </div>
@@ -263,17 +266,21 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
                   </div>
 
                   {/* Skip Button */}
-                  <div className="mt-6 flex justify-end">
+                  <div className="mt-8 flex justify-end">
                     <button
                       type="button"
                       onClick={() => toggleSkip(currentPosition)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      className={`px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${
                         skipped.has(currentPosition)
-                          ? 'bg-green-600 text-white hover:bg-green-700'
+                          ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      {skipped.has(currentPosition) ? 'Skipped' : 'Skip this position'}
+                      {skipped.has(currentPosition) ? (
+                        <>Skipped</>
+                      ) : (
+                        'Skip this position'
+                      )}
                     </button>
                   </div>
                 </div>
@@ -287,10 +294,13 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
                     const selectedCandidate = candidates.find(c => c.id === selections[pos]);
                     const isSkipped = skipped.has(pos);
                     return (
-                      <div key={pos} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div
+                        key={pos}
+                        className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100"
+                      >
                         <div>
-                          <p className="font-medium text-gray-900">{pos}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="font-semibold text-gray-900">{pos}</p>
+                          <p className="text-sm text-gray-700 mt-1">
                             {isSkipped
                               ? 'Skipped'
                               : selectedCandidate?.name || 'Not selected'}
@@ -311,15 +321,15 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
             )}
 
             {/* Navigation Footer */}
-            <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-between items-center">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 rounded-b-2xl flex justify-between items-center shadow-sm">
               <button
                 type="button"
                 onClick={handleBack}
                 disabled={isFirstPage}
-                className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+                className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
                   isFirstPage
                     ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700 hover:bg-gray-200'
+                    : 'text-gray-700 hover:bg-white shadow-sm'
                 }`}
               >
                 Back
@@ -329,10 +339,10 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
                 <button
                   type="submit"
                   disabled={isSubmitting || selectedCount < positions.length}
-                  className={`px-6 py-2.5 rounded-lg font-medium text-white transition-all flex items-center gap-2 ${
+                  className={`px-8 py-3 rounded-xl font-semibold text-white transition-all flex items-center gap-3 shadow-lg ${
                     isSubmitting || selectedCount < positions.length
                       ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
                   }`}
                 >
                   {isSubmitting ? (
@@ -349,9 +359,9 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
                   type="button"
                   onClick={handleNext}
                   disabled={!isPositionSelected}
-                  className={`px-6 py-2.5 rounded-lg font-medium text-white transition-all ${
+                  className={`px-8 py-3 rounded-xl font-semibold text-white transition-all shadow-lg ${
                     isPositionSelected
-                      ? 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
                       : 'bg-gray-400 cursor-not-allowed'
                   }`}
                 >
