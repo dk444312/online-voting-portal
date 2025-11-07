@@ -1,6 +1,8 @@
 // Voting.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabaseClient } from '../services/supabase';
+import type
+
 import type { Voter, Candidate, Selections, Settings } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import CandidateOption from './CandidateOption';
@@ -23,29 +25,7 @@ const formatDate = (date: Date): string => {
 };
 
 /* --------------------------------------------------------------
-   2. HEADER – mobile-first, perfectly positioned logout
-   -------------------------------------------------------------- */
-const Header: React.FC<{ onLogout: () => void }> = ({ onLogout }) => (
-  <header className="relative flex items-center justify-center px-4 py-5 mb-8">
-    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center flex-1">
-      Online Voting Portal
-    </h1>
-
-    <button
-      onClick={onLogout}
-      className="absolute right-4 top-1/2 -translate-y-1/2 
-                 flex items-center gap-1.5 text-slate-500 text-sm font-medium 
-                 py-1.5 px-3 rounded-md transition-all 
-                 hover:text-red-600 hover:bg-red-50"
-      aria-label="Logout"
-    >
-      Logout
-    </button>
-  </header>
-);
-
-/* --------------------------------------------------------------
-   3. MAIN VOTING COMPONENT
+   2. MAIN VOTING COMPONENT
    -------------------------------------------------------------- */
 interface VotingProps {
   voter: Voter;
@@ -130,7 +110,6 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
     setError(null);
 
     try {
-      // deadline check
       const { data: settings } = await supabaseClient
         .from('settings')
         .select('value')
@@ -142,19 +121,16 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
         return;
       }
 
-      // require all positions filled
       const filled = Object.values(selections).filter((v): v is number => v !== null);
       if (filled.length !== positions.length) {
         alert('Please complete every position.');
         return;
       }
 
-      // insert votes
       const votes = filled.map(id => ({ voter_id: voter.id, candidate_id: id }));
       const { error: voteErr } = await supabaseClient.from('votes').insert(votes);
       if (voteErr) throw voteErr;
 
-      // mark voter
       const { error: voterErr } = await supabaseClient
         .from('voters')
         .update({ has_voted: true })
@@ -187,8 +163,24 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
 
   // ────── Render ──────
   return (
-    <>
-      {/* ---------- WELCOME MODAL ---------- */}
+    <div className="relative min-h-screen bg-gradient-to-b from-blue-50 to-gray-100">
+      {/* ==================== FIXED LOGOUT BUTTON (TOP-RIGHT) ==================== */}
+      <button
+        onClick={onLogout}
+        className="fixed top-4 right-4 z-50 
+                   flex items-center gap-2 
+                   px-4 py-2 
+                   bg-white/90 backdrop-blur-sm 
+                   text-red-600 text-sm font-medium 
+                   rounded-full shadow-lg 
+                   hover:bg-red-50 hover:shadow-xl 
+                   transition-all duration-200"
+        aria-label="Logout"
+      >
+        Logout
+      </button>
+
+      {/* ==================== WELCOME MODAL ==================== */}
       {showWelcome && (
         <WelcomeModal
           voterName={voter.name}
@@ -196,7 +188,7 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
         />
       )}
 
-      {/* ---------- SUMMARY MODAL ---------- */}
+      {/* ==================== VOTING SUMMARY ==================== */}
       {showSummary && submitTime && (
         <SummaryModal
           voter={voter}
@@ -212,11 +204,10 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
         />
       )}
 
-      {/* ---------- MAIN UI ---------- */}
+      {/* ==================== MAIN VOTING UI ==================== */}
       {!showSummary && (
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 py-6 px-4">
+        <div className="pt-16 pb-8 px-4">
           <div className="max-w-3xl mx-auto">
-            <Header onLogout={onLogout} />
 
             {/* Progress */}
             <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
@@ -239,7 +230,6 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
                   onSkip={() => toggleSkip(currentPos)}
                 />
               ) : (
-                /* Review Page */
                 <ReviewPage
                   positions={positions}
                   selections={selections}
@@ -264,12 +254,12 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };
 
 /* --------------------------------------------------------------
-   4. SMALL REUSABLE UI COMPONENTS
+   3. SMALL REUSABLE UI COMPONENTS
    -------------------------------------------------------------- */
 const LoadingScreen = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
