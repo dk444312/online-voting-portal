@@ -1,11 +1,52 @@
+// Voting.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabaseClient } from '../services/supabase';
 import type { Voter, Candidate, Selections, Settings } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import CandidateOption from './CandidateOption';
 import ProgressBar from './ProgressBar';
-import { format } from 'date-fns';
 
+/* --------------------------------------------------------------
+   1. HELPER: Format date/time in CAT (Blantyre, Malawi)
+   -------------------------------------------------------------- */
+const formatDate = (date: Date): string => {
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: 'Africa/Blantyre',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  };
+  return date.toLocaleString('en-GB', options).replace(',', '');
+};
+
+/* --------------------------------------------------------------
+   2. HEADER – mobile-first, perfectly positioned logout
+   -------------------------------------------------------------- */
+const Header: React.FC<{ onLogout: () => void }> = ({ onLogout }) => (
+  <header className="relative flex items-center justify-center px-4 py-5 mb-8">
+    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center flex-1">
+      Online Voting Portal
+    </h1>
+
+    <button
+      onClick={onLogout}
+      className="absolute right-4 top-1/2 -translate-y-1/2 
+                 flex items-center gap-1.5 text-slate-500 text-sm font-medium 
+                 py-1.5 px-3 rounded-md transition-all 
+                 hover:text-red-600 hover:bg-red-50"
+      aria-label="Logout"
+    >
+      Logout
+    </button>
+  </header>
+);
+
+/* --------------------------------------------------------------
+   3. MAIN VOTING COMPONENT
+   -------------------------------------------------------------- */
 interface VotingProps {
   voter: Voter;
   onVoteSuccess: () => void;
@@ -13,6 +54,7 @@ interface VotingProps {
 }
 
 const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
+  // ────── State ──────
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [positions, setPositions] = useState<string[]>([]);
   const [selections, setSelections] = useState<Selections>({});
@@ -20,11 +62,12 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const [showSummary, setShowSummary] = useState(false); // NEW: Summary modal
-  const [submitTime, setSubmitTime] = useState<Date | null>(null); // NEW: Timestamp
+  const [showSummary, setShowSummary] = useState(false);
+  const [submitTime, setSubmitTime] = useState<Date | null>(null);
 
+  // ────── Load candidates ──────
   const loadCandidates = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -37,18 +80,15 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
 
       if (fetchError) throw fetchError;
 
-      if (data) {
-        setCandidates(data);
-        const uniquePositions = [...new Set(data.map(c => c.position))];
-        setPositions(uniquePositions);
-        const initialSelections = uniquePositions.reduce((acc, pos) => {
-          acc[pos] = null;
-          return acc;
-        }, {} as Selections);
-        setSelections(initialSelections);
-      }
+      const uniquePositions = [...new Set(data.map(c => c.position))];
+      setPositions(uniquePositions);
+      setCandidates(data);
+
+      const init: Selections = {};
+      uniquePositions.forEach(p => (init[p] = null));
+      setSelections(init);
     } catch (err: any) {
-      setError(`Error loading candidates: ${err.message}`);
+      setError(`Failed to load candidates: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -58,392 +98,168 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
     loadCandidates();
   }, [loadCandidates]);
 
-  const handleSelectCandidate = (position: string, candidateId: number) => {
-    setSelections(prev => ({ ...prev, [position]: candidateId }));
+  // ────── Handlers ──────
+  const selectCandidate = (pos: string, id: number) => {
+    setSelections(s => ({ ...s, [pos]: id }));
     setSkipped(prev => {
-      const next = new Set(prev);
-      next.delete(position);
-      return next;
+      const n = new Set(prev);
+      n.delete(pos);
+      return n;
     });
   };
 
-  const toggleSkip = (position: string) => {
+  const toggleSkip = (pos: string) => {
     setSkipped(prev => {
-      const next = new Set(prev);
-      if (next.has(position)) {
-        next.delete(position);
-        setSelections(s => ({ ...s, [position]: s[position] ?? null }));
+      const n = new Set(prev);
+      if (n.has(pos)) {
+        n.delete(pos);
       } else {
-        next.add(position);
-        setSelections(s => ({ ...s, [position]: null }));
+        n.add(pos);
+        setSelections(s => ({ ...s, [pos]: null }));
       }
-      return next;
+      return n;
     });
   };
 
-  const handleNext = () => {
-    if (currentPage < positions.length) {
-      setCurrentPage(prev => prev + 1);
-    }
-  };
+  const next = () => currentPage < positions.length && setCurrentPage(p => p + 1);
+  const back = () => currentPage > 0 && setCurrentPage(p => p - 1);
 
-  const handleBack = () => {
-    if (currentPage > 0) {
-      setCurrentPage(prev => prev - 1);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submitVote = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const { data: settings, error: deadlineError } = await supabaseClient
+      // deadline check
+      const { data: settings } = await supabaseClient
         .from('settings')
         .select('value')
         .eq('key', 'voting_deadline')
-        .returns<Pick<Settings, 'value'>[]>();
+        .single();
 
-      if (deadlineError) throw deadlineError;
-      if (settings && settings.length > 0 && new Date() > new Date(settings[0].value)) {
-        alert('Voting has ended. Your vote cannot be submitted.');
-        setIsSubmitting(false);
+      if (settings && new Date() > new Date(settings.value)) {
+        alert('Voting has ended.');
         return;
       }
 
-      const filledPositions = Object.values(selections).filter((val): val is number => val !== null);
-      if (filledPositions.length !== positions.length) {
-        alert('Please complete all positions before submitting.');
-        setIsSubmitting(false);
+      // require all positions filled
+      const filled = Object.values(selections).filter((v): v is number => v !== null);
+      if (filled.length !== positions.length) {
+        alert('Please complete every position.');
         return;
       }
 
-      const votes = filledPositions.map(candidateId => ({
-        voter_id: voter.id,
-        candidate_id: candidateId,
-      }));
+      // insert votes
+      const votes = filled.map(id => ({ voter_id: voter.id, candidate_id: id }));
+      const { error: voteErr } = await supabaseClient.from('votes').insert(votes);
+      if (voteErr) throw voteErr;
 
-      const { error: voteError } = await supabaseClient.from('votes').insert(votes as any);
-      if (voteError) throw voteError;
-
-      const { error: updateError } = await supabaseClient
+      // mark voter
+      const { error: voterErr } = await supabaseClient
         .from('voters')
-        .update({ has_voted: true } as any)
+        .update({ has_voted: true })
         .eq('id', voter.id);
-      if (updateError) throw updateError;
+      if (voterErr) throw voterErr;
 
-      // Record submission time
-      const now = new Date();
-      setSubmitTime(now);
-
-      // Show summary instead of navigating away
+      setSubmitTime(new Date());
       setShowSummary(true);
     } catch (err: any) {
-      alert('Error submitting vote: ' + err.message);
-      setError('Error submitting vote: ' + err.message);
+      alert('Submission failed: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const currentPosition = positions[currentPage];
-  const selectedCount = Object.values(selections).filter(s => s !== null).length;
+  // ────── Derived values ──────
+  const currentPos = positions[currentPage];
+  const selectedCount = Object.values(selections).filter(v => v !== null).length;
   const completedCount = selectedCount + skipped.size;
   const isLastPage = currentPage === positions.length;
   const isFirstPage = currentPage === 0;
-  const isPositionSelected = currentPosition
-    ? selections[currentPosition] !== null || skipped.has(currentPosition)
+  const canProceed = currentPos
+    ? selections[currentPos] !== null || skipped.has(currentPos)
     : true;
 
-  // Loading / Error / Empty
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-sm p-8 max-w-md w-full text-center">
-          <LoadingSpinner />
-          <p className="mt-4 text-gray-600 font-medium">Loading election...</p>
-        </div>
-      </div>
-    );
-  }
+  // ────── Early returns ──────
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={error} />;
+  if (positions.length === 0) return <EmptyScreen />;
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-sm p-8 max-w-md w-full text-center">
-          <p className="text-red-600 font-medium">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (positions.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-sm p-8 max-w-2xl w-full text-center">
-          <p className="text-gray-600">No candidates are available for voting at this time.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // ────── Render ──────
   return (
     <>
-      {/* ==================== WELCOME MODAL ==================== */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 animate-fadeIn">
-            <h1 className="text-3xl md:text-4xl font-bold text-center text-blue-900 mb-4">
-              2025 Finale Dinner Awards Voting
-            </h1>
-            <p className="text-gray-700 text-center mb-6 leading-relaxed">
-              Welcome, <span className="font-bold text-blue-700">{voter.name}</span>!<br />
-              You are now casting your vote for the annual awards.
-            </p>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg"
-              >
-                Start Voting
-              </button>
-              <button
-                onClick={onLogout}
-                className="px-8 py-3 bg-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-300 transition"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ---------- WELCOME MODAL ---------- */}
+      {showWelcome && (
+        <WelcomeModal
+          voterName={voter.name}
+          onStart={() => setShowWelcome(false)}
+        />
       )}
 
-      {/* ==================== VOTING SUMMARY MODAL ==================== */}
+      {/* ---------- SUMMARY MODAL ---------- */}
       {showSummary && submitTime && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 animate-fadeIn">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">Vote Submitted Successfully!</h2>
-              <p className="text-gray-600 mt-2">Your vote has been recorded securely.</p>
-            </div>
-
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 mb-6 border border-blue-100">
-              <h3 className="font-semibold text-lg text-gray-800 mb-4">Your Voting Summary</h3>
-              <div className="space-y-3">
-                {positions.map(pos => {
-                  const selectedCandidate = candidates.find(c => c.id === selections[pos]);
-                  const isSkipped = skipped.has(pos);
-                  return (
-                    <div key={pos} className="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm">
-                      <div>
-                        <p className="font-medium text-gray-900">{pos}</p>
-                        <p className="text-sm text-gray-600">
-                          {isSkipped ? (
-                            <span className="text-orange-600 font-medium">Skipped</span>
-                          ) : (
-                            selectedCandidate?.name || '—'
-                          )}
-                        </p>
-                      </div>
-                      {isSkipped ? (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">Abstained</span>
-                      ) : (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Voted</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="text-center text-sm text-gray-500 space-y-1">
-              <p><strong>Voter:</strong> {voter.name}</p>
-              <p><strong>Submitted on:</strong> {format(submitTime, 'PPP')}</p>
-              <p><strong>Time:</strong> {format(submitTime, 'p')} (CAT)</p>
-            </div>
-
-            <div className="flex justify-center gap-4 mt-8">
-              <button
-                onClick={() => {
-                  setShowSummary(false);
-                  onVoteSuccess(); // Navigate to thank you / dashboard
-                }}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition shadow-md"
-              >
-                Continue
-              </button>
-              <button
-                onClick={onLogout}
-                className="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-300 transition"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
+        <SummaryModal
+          voter={voter}
+          positions={positions}
+          selections={selections}
+          skipped={skipped}
+          candidates={candidates}
+          submitTime={submitTime}
+          onContinue={() => {
+            setShowSummary(false);
+            onVoteSuccess();
+          }}
+        />
       )}
 
-      {/* ==================== MAIN VOTING UI (only if not submitted) ==================== */}
+      {/* ---------- MAIN UI ---------- */}
       {!showSummary && (
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 py-8 px-4">
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 py-6 px-4">
           <div className="max-w-3xl mx-auto">
-            {/* Header */}
-            <div className="bg-white rounded-t-2xl shadow-sm border-b border-gray-200 p-6 flex justify-between items-start">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Cast Your Vote</h1>
-                <p className="mt-2 text-gray-600">
-                  Select one candidate per position. Your vote is secure and anonymous.
-                </p>
-              </div>
-              <button
-                onClick={onLogout}
-                className="px-5 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition shadow-md"
-              >
-                Logout
-              </button>
-            </div>
+            <Header onLogout={onLogout} />
 
             {/* Progress */}
-            <div className="bg-white px-6 pt-4 pb-2">
-              <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+            <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+              <div className="flex justify-between text-xs sm:text-sm text-gray-600 mb-2">
                 <span>Question {currentPage + 1} of {positions.length + 1}</span>
                 <span className="font-medium">{completedCount} of {positions.length} completed</span>
               </div>
               <ProgressBar total={positions.length + 1} current={currentPage + 1} />
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={submitVote}>
               {/* Question Page */}
               {!isLastPage ? (
-                <div className="bg-white p-6 md:p-10">
-                  <div className="max-w-2xl">
-                    <h2 className="text-lg md:text-xl font-medium text-gray-900 mb-6 flex items-center">
-                      {currentPosition}
-                      <span className="text-red-500 ml-1">Required</span>
-                    </h2>
-
-                    <div className="space-y-3">
-                      {candidates
-                        .filter(c => c.position === currentPosition)
-                        .map(candidate => (
-                          <CandidateOption
-                            key={candidate.id}
-                            candidate={candidate}
-                            isSelected={selections[currentPosition] === candidate.id}
-                            onSelect={() => handleSelectCandidate(currentPosition, candidate.id)}
-                          />
-                        ))}
-                    </div>
-
-                    <div className="mt-8 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => toggleSkip(currentPosition)}
-                        className={`px-5 py-2.5 rounded-xl font-medium transition-all flex items-center gap-2 ${
-                          skipped.has(currentPosition)
-                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        {skipped.has(currentPosition) ? (
-                          <>Skipped</>
-                        ) : (
-                          'Skip this position'
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <QuestionPage
+                  position={currentPos}
+                  candidates={candidates.filter(c => c.position === currentPos)}
+                  selectedId={selections[currentPos]}
+                  isSkipped={skipped.has(currentPos)}
+                  onSelect={id => selectCandidate(currentPos, id)}
+                  onSkip={() => toggleSkip(currentPos)}
+                />
               ) : (
                 /* Review Page */
-                <div className="bg-white p-6 md:p-10">
-                  <h2 className="text-xl font-medium text-gray-900 mb-6">Review Your Selections</h2>
-                  <div className="space-y-4 max-w-2xl">
-                    {positions.map((pos, idx) => {
-                      const selectedCandidate = candidates.find(c => c.id === selections[pos]);
-                      const isSkipped = skipped.has(pos);
-                      return (
-                        <div
-                          key={pos}
-                          className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100"
-                        >
-                          <div>
-                            <p className="font-semibold text-gray-900">{pos}</p>
-                            <p className="text-sm text-gray-700 mt-1">
-                              {isSkipped
-                                ? 'Skipped'
-                                : selectedCandidate?.name || 'Not selected'}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentPage(idx)}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium underline"
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <ReviewPage
+                  positions={positions}
+                  selections={selections}
+                  skipped={skipped}
+                  candidates={candidates}
+                  onEdit={setCurrentPage}
+                />
               )}
 
               {/* Navigation */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 rounded-b-2xl flex justify-between items-center shadow-sm">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  disabled={isFirstPage}
-                  className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
-                    isFirstPage
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-gray-700 hover:bg-white shadow-sm'
-                  }`}
-                >
-                  Back
-                </button>
-
-                {isLastPage ? (
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || selectedCount < positions.length}
-                    className={`px-8 py-3 rounded-xl font-semibold text-white transition-all flex items-center gap-3 shadow-lg ${
-                      isSubmitting || selectedCount < positions.length
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
-                    }`}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <LoadingSpinner size="sm" />
-                        Submitting...
-                      </>
-                    ) : (
-                      'Submit Vote'
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!isPositionSelected}
-                    className={`px-8 py-3 rounded-xl font-semibold text-white transition-all shadow-lg ${
-                      isPositionSelected
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
-                        : 'bg-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    Next
-                  </button>
-                )}
-              </div>
+              <Navigation
+                isFirst={isFirstPage}
+                isLast={isLastPage}
+                canProceed={canProceed}
+                isSubmitting={isSubmitting}
+                selectedCount={selectedCount}
+                totalPositions={positions.length}
+                onBack={back}
+                onNext={next}
+              />
             </form>
           </div>
         </div>
@@ -451,5 +267,275 @@ const Voting: React.FC<VotingProps> = ({ voter, onVoteSuccess, onLogout }) => {
     </>
   );
 };
+
+/* --------------------------------------------------------------
+   4. SMALL REUSABLE UI COMPONENTS
+   -------------------------------------------------------------- */
+const LoadingScreen = () => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-xl shadow-sm p-8 max-w-md w-full text-center">
+      <LoadingSpinner />
+      <p className="mt-4 text-gray-600 font-medium">Loading election...</p>
+    </div>
+  </div>
+);
+
+const ErrorScreen = ({ message }: { message: string }) => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-xl shadow-sm p-8 max-w-md w-full text-center">
+      <p className="text-red-600 font-medium">{message}</p>
+    </div>
+  </div>
+);
+
+const EmptyScreen = () => (
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-xl shadow-sm p-8 max-w-2xl w-full text-center">
+      <p className="text-gray-600">No candidates available.</p>
+    </div>
+  </div>
+);
+
+const WelcomeModal = ({ voterName, onStart }: { voterName: string; onStart: () => void }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-fadeIn">
+      <h1 className="text-2xl sm:text-3xl font-bold text-blue-900 mb-3">
+        2025 Finale Dinner Awards
+      </h1>
+      <p className="text-gray-700 mb-5">
+        Welcome, <strong className="text-blue-700">{voterName}</strong>!
+      </p>
+      <button
+        onClick={onStart}
+        className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-lg text-sm"
+      >
+        Start Voting
+      </button>
+    </div>
+  </div>
+);
+
+const SummaryModal = ({
+  voter,
+  positions,
+  selections,
+  skipped,
+  candidates,
+  submitTime,
+  onContinue,
+}: {
+  voter: Voter;
+  positions: string[];
+  selections: Selections;
+  skipped: Set<string>;
+  candidates: Candidate[];
+  submitTime: Date;
+  onContinue: () => void;
+}) => (
+  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fadeIn">
+      <div className="text-center mb-5">
+        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Vote Submitted!</h2>
+      </div>
+
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-4 border border-blue-100">
+        <h3 className="font-semibold text-sm text-gray-800 mb-3">Your Summary</h3>
+        <div className="space-y-2 text-xs">
+          {positions.map(pos => {
+            const cand = candidates.find(c => c.id === selections[pos]);
+            const skippedPos = skipped.has(pos);
+            return (
+              <div key={pos} className="flex justify-between items-center p-2 bg-white rounded-lg">
+                <div>
+                  <p className="font-medium text-gray-900 text-xs">{pos}</p>
+                  <p className="text-gray-600">{skippedPos ? 'Skipped' : cand?.name || '—'}</p>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs ${
+                    skippedPos ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  {skippedPos ? 'Abstained' : 'Voted'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="text-center text-xs text-gray-500">
+        <p><strong>Voter:</strong> {voter.name}</p>
+        <p><strong>Submitted:</strong> {formatDate(submitTime)} (CAT)</p>
+      </div>
+
+      <button
+        onClick={onContinue}
+        className="w-full mt-5 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-lg text-sm"
+      >
+        Continue
+      </button>
+    </div>
+  </div>
+);
+
+const QuestionPage = ({
+  position,
+  candidates,
+  selectedId,
+  isSkipped,
+  onSelect,
+  onSkip,
+}: {
+  position: string;
+  candidates: Candidate[];
+  selectedId: number | null;
+  isSkipped: boolean;
+  onSelect: (id: number) => void;
+  onSkip: () => void;
+}) => (
+  <div className="bg-white rounded-xl shadow-sm p-5 sm:p-8 mb-6">
+    <h2 className="text-lg sm:text-xl font-medium text-gray-900 mb-5 flex items-center">
+      {position} <span className="text-red-500 ml-1">Required</span>
+    </h2>
+    <div className="space-y-3">
+      {candidates.map(c => (
+        <CandidateOption
+          key={c.id}
+          candidate={c}
+          isSelected={selectedId === c.id}
+          onSelect={() => onSelect(c.id)}
+        />
+      ))}
+    </div>
+    <div className="mt-6 flex justify-end">
+      <button
+        type="button"
+        onClick={onSkip}
+        className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition-all ${
+          isSkipped
+            ? 'bg-green-600 text-white hover:bg-green-700'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+        }`}
+      >
+        {isSkipped ? 'Skipped' : 'Skip this position'}
+      </button>
+    </div>
+  </div>
+);
+
+const ReviewPage = ({
+  positions,
+  selections,
+  skipped,
+  candidates,
+  onEdit,
+}: {
+  positions: string[];
+  selections: Selections;
+  skipped: Set<string>;
+  candidates: Candidate[];
+  onEdit: (idx: number) => void;
+}) => (
+  <div className="bg-white rounded-xl shadow-sm p-5 sm:p-8 mb-6">
+    <h2 className="text-lg sm:text-xl font-medium text-gray-900 mb-5">Review Your Selections</h2>
+    <div className="space-y-3">
+      {positions.map((pos, i) => {
+        const cand = candidates.find(c => c.id === selections[pos]);
+        const skippedPos = skipped.has(pos);
+        return (
+          <div
+            key={pos}
+            className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
+          >
+            <div>
+              <p className="font-medium text-gray-900 text-sm">{pos}</p>
+              <p className="text-xs text-gray-700 mt-0.5">
+                {skippedPos ? 'Skipped' : cand?.name || 'Not selected'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onEdit(i)}
+              className="text-blue-600 hover:text-blue-800 text-xs font-medium underline"
+            >
+              Edit
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const Navigation = ({
+  isFirst,
+  isLast,
+  canProceed,
+  isSubmitting,
+  selectedCount,
+  totalPositions,
+  onBack,
+  onNext,
+}: {
+  isFirst: boolean;
+  isLast: boolean;
+  canProceed: boolean;
+  isSubmitting: boolean;
+  selectedCount: number;
+  totalPositions: number;
+  onBack: () => void;
+  onNext: () => void;
+}) => (
+  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4 rounded-b-2xl flex justify-between items-center shadow-sm">
+    <button
+      type="button"
+      onClick={onBack}
+      disabled={isFirst}
+      className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+        isFirst ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-white'
+      }`}
+    >
+      Back
+    </button>
+
+    {isLast ? (
+      <button
+        type="submit"
+        disabled={isSubmitting || selectedCount < totalPositions}
+        className={`px-6 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2 shadow-md transition-all ${
+          isSubmitting || selectedCount < totalPositions
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+        }`}
+      >
+        {isSubmitting ? (
+          <>
+            <LoadingSpinner size="sm" /> Submitting...
+          </>
+        ) : (
+          'Submit Vote'
+        )}
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!canProceed}
+        className={`px-6 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md transition-all ${
+          canProceed
+            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+            : 'bg-gray-400 cursor-not-allowed'
+        }`}
+      >
+        Next
+      </button>
+    )}
+  </div>
+);
 
 export default Voting;
