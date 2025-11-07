@@ -4,7 +4,6 @@ import type { Voter, Candidate, Selections, Settings } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import CandidateOption from './CandidateOption';
 import ProgressBar from './ProgressBar';
-import { format } from 'date-fns';
 
 // ──────────────────────────────────────────────────────────────
 //  HEADER – MOBILE-FIRST, PERFECTLY POSITIONED LOGOUT
